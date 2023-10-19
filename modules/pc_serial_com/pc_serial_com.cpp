@@ -37,11 +37,12 @@ char codeSequenceFromPcSerialCom[CODE_NUMBER_OF_KEYS];
 
 static pcSerialComMode_t pcSerialComMode = PC_SERIAL_COMMANDS;
 static bool codeComplete = false;
+static bool dateComplete = true;
 static int numberOfCodeChars = 0;
 
 //=====[Declarations (prototypes) of private functions]========================
 
-static void pcSerialComStringRead( char* str, int strLength );
+static int pcSerialComStringRead( char* str, int strLength );
 
 static void pcSerialComGetCodeUpdate( char receivedChar );
 static void pcSerialComSaveNewCodeUpdate( char receivedChar );
@@ -83,25 +84,30 @@ void pcSerialComStringWrite( const char* str )
 
 void pcSerialComUpdate()
 {
-    char receivedChar = pcSerialComCharRead();
-    if( receivedChar != '\0' ) {
-        switch ( pcSerialComMode ) {
-            case PC_SERIAL_COMMANDS:
-                pcSerialComCommandUpdate( receivedChar );
-            break;
+    if (!dateComplete) {
+        commandSetDateAndTime();
+    } 
+    else {    
+        char receivedChar = pcSerialComCharRead();
+        if( receivedChar != '\0' ) {
+            switch ( pcSerialComMode ) {
+                case PC_SERIAL_COMMANDS:
+                    pcSerialComCommandUpdate( receivedChar );
+                break;
 
-            case PC_SERIAL_GET_CODE:
-                pcSerialComGetCodeUpdate( receivedChar );
-            break;
+                case PC_SERIAL_GET_CODE:
+                    pcSerialComGetCodeUpdate( receivedChar );
+                break;
 
-            case PC_SERIAL_SAVE_NEW_CODE:
-                pcSerialComSaveNewCodeUpdate( receivedChar );
-            break;
-            default:
-                pcSerialComMode = PC_SERIAL_COMMANDS;
-            break;
-        }
-    }    
+                case PC_SERIAL_SAVE_NEW_CODE:
+                    pcSerialComSaveNewCodeUpdate( receivedChar );
+                break;
+                default:
+                    pcSerialComMode = PC_SERIAL_COMMANDS;
+                break;
+            }
+        }    
+    }
 }
 
 bool pcSerialComCodeCompleteRead()
@@ -116,14 +122,42 @@ void pcSerialComCodeCompleteWrite( bool state )
 
 //=====[Implementations of private functions]==================================
 
-static void pcSerialComStringRead( char* str, int strLength )
+/* 
+Función: static void pcSerialComStringRead( char* str, int strLength )
+Esta función es bloqueante ya que espera a que el usuario escriba antes de continuar la ejecución. Se utiliza en 
+la función static void commandSetDateAndTime() para establecer el año, mes y día.
+
+Para resolver este problema, se puede implementar una máquina de estados que gestione la entrada de la fecha, 
+donde cada estado corresponde a un valor específico que se está solicitando. Se realizarán modificaciones en los 
+archivos pc_serial_com.cpp y su archivo de encabezado (.h) para incluir un enum que defina los estados de la fecha 
+y una variable booleana "datecomplete". Además, se modificará pcSerialComUpdate para determinar si se necesitan más 
+datos de fecha. La función commandSetDateAndTime() se actualizará para incluir un switch que maneje la máquina de 
+estados. pcSerialComStringRead ahora deberá devolver la cantidad de dígitos recibidos como un entero, y la opción 
+'s' en pcSerialComCommandUpdate se actualizará para reflejar estos cambios.
+
+Adicionalmente, se identificó una función que utiliza un retraso en el siguiente archivo: smart_home_system.cpp
+Función: void smartHomeSystemUpdate()
+Aunque esta función incluye un retraso de 10 ms, no se considera bloqueante ya que el retraso es muy corto.
+
+ */
+ 
+static int pcSerialComStringRead( char* str, int strLength )
 {
-    int strIndex;
-    for ( strIndex = 0; strIndex < strLength; strIndex++) {
-        uartUsb.read( &str[strIndex] , 1 );
-        uartUsb.write( &str[strIndex] ,1 );
+    static int strIndex = 0;
+
+
+    while ( uartUsb.readable() && (strIndex < strLength) ) {
+            uartUsb.read( &str[strIndex] , 1 );
+            uartUsb.write( &str[strIndex] ,1 );
+            strIndex++;
     }
-    str[strLength]='\0';
+    int auxindex  = strIndex;
+    if (strIndex == strLength){
+        str[strLength]='\0';
+        strIndex = 0;
+    }
+
+    return auxindex;
 }
 
 static void pcSerialComGetCodeUpdate( char receivedChar )
@@ -163,7 +197,7 @@ static void pcSerialComCommandUpdate( char receivedChar )
         case '5': commandEnterNewCode(); break;
         case 'c': case 'C': commandShowCurrentTemperatureInCelsius(); break;
         case 'f': case 'F': commandShowCurrentTemperatureInFahrenheit(); break;
-        case 's': case 'S': commandSetDateAndTime(); break;
+        case 's': case 'S': dateComplete = false; commandSetDateAndTime(); break;
         case 't': case 'T': commandShowDateAndTime(); break;
         case 'e': case 'E': commandShowStoredEvents(); break;
         default: availableCommands(); break;
@@ -260,34 +294,60 @@ static void commandSetDateAndTime()
     char minute[3] = "";
     char second[3] = "";
     
-    pcSerialComStringWrite("\r\nType four digits for the current year (YYYY): ");
-    pcSerialComStringRead( year, 4);
-    pcSerialComStringWrite("\r\n");
+// maquina de estados para
+    static int date_state = initState;
+    switch(date_state){
+        case initState:
+            pcSerialComStringWrite("\r\nType four digits for the current year (YYYY): ");
+            date_state = yearState;
+        break;
+        case yearState:
+            if (pcSerialComStringRead( year, 4) == 4){
+                date_state = monthState;
+                pcSerialComStringWrite("\r\n");
+            pcSerialComStringWrite("Type two digits for the current month (01-12): ");
+            }
+        break;
+        
+        case monthState:
+            if (pcSerialComStringRead( month, 2) == 2){
+                date_state = dayState;
+                pcSerialComStringWrite("\r\n");
+                pcSerialComStringWrite("Type two digits for the current day (01-31): ");
+            }
+        break;
+        case dayState:
+            if ( pcSerialComStringRead( day, 2) == 2){
+                date_state = hourState;
+                pcSerialComStringWrite("\r\n");
+                pcSerialComStringWrite("Type two digits for the current hour (00-23): ");
+            }
+        break;
+        case hourState:
+            if ( pcSerialComStringRead( hour, 2) == 2){
+                date_state = minuteState;
+                pcSerialComStringWrite("\r\n");
+                pcSerialComStringWrite("Type two digits for the current minutes (00-59): ");
+            }
+        break;
+        case minuteState:
+            if ( pcSerialComStringRead( minute, 2) == 2){
+                date_state = secondState;
+                pcSerialComStringWrite("\r\n");
+                pcSerialComStringWrite("Type two digits for the current seconds (00-59): ");
+            }
+        break;
+        case secondState:
+            if ( pcSerialComStringRead( second, 2) == 2){
+                date_state = initState;
+                pcSerialComStringWrite("\r\n");
+                pcSerialComStringWrite("Date and time has been set\r\n");   
 
-    pcSerialComStringWrite("Type two digits for the current month (01-12): ");
-    pcSerialComStringRead( month, 2);
-    pcSerialComStringWrite("\r\n");
-
-    pcSerialComStringWrite("Type two digits for the current day (01-31): ");
-    pcSerialComStringRead( day, 2);
-    pcSerialComStringWrite("\r\n");
-
-    pcSerialComStringWrite("Type two digits for the current hour (00-23): ");
-    pcSerialComStringRead( hour, 2);
-    pcSerialComStringWrite("\r\n");
-
-    pcSerialComStringWrite("Type two digits for the current minutes (00-59): ");
-    pcSerialComStringRead( minute, 2);
-    pcSerialComStringWrite("\r\n");
-
-    pcSerialComStringWrite("Type two digits for the current seconds (00-59): ");
-    pcSerialComStringRead( second, 2);
-    pcSerialComStringWrite("\r\n");
-    
-    pcSerialComStringWrite("Date and time has been set\r\n");
-
-    dateAndTimeWrite( atoi(year), atoi(month), atoi(day), 
-        atoi(hour), atoi(minute), atoi(second) );
+                dateAndTimeWrite( atoi(year), atoi(month), atoi(day), 
+                    atoi(hour), atoi(minute), atoi(second) );
+                    dateComplete = true;
+                }
+        break;}
 }
 
 static void commandShowDateAndTime()

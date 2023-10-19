@@ -1,8 +1,4 @@
-//=====[Libraries]=============================================================
-
 #include "smart_home_system.h"
-
-//=====[Main function, the program entry point after power on or reset]========
 
 int main()
 {
@@ -11,3 +7,6 @@ int main()
         smartHomeSystemUpdate();
     }
 }
+
+/* El problema del codigo bloqueante se encuentra en pc_serial_com.cpp
+ */
