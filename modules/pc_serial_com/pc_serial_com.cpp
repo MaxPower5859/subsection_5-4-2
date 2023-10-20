@@ -40,6 +40,14 @@ static bool codeComplete = false;
 static bool dateComplete = true;
 static int numberOfCodeChars = 0;
 
+static char year[5] = "";
+static char month[3] = "";
+static char day[3] = "";
+static char hour[3] = "";
+static char minute[3] = "";
+static char second[3] = "";
+int indice = 0;
+
 //=====[Declarations (prototypes) of private functions]========================
 
 static int pcSerialComStringRead( char* str, int strLength );
@@ -76,7 +84,7 @@ char pcSerialComCharRead()
     }
     return receivedChar;
 }
-
+//
 void pcSerialComStringWrite( const char* str )
 {
     uartUsb.write( str, strlen(str) );
@@ -140,8 +148,8 @@ Función: void smartHomeSystemUpdate()
 Aunque esta función incluye un retraso de 10 ms, no se considera bloqueante ya que el retraso es muy corto.
 
  */
- 
-static int pcSerialComStringRead( char* str, int strLength )
+
+/* static int pcSerialComStringRead( char* str, int strLength )
 {
     static int strIndex = 0;
 
@@ -158,6 +166,25 @@ static int pcSerialComStringRead( char* str, int strLength )
     }
 
     return auxindex;
+} */
+
+static int pcSerialComStringRead( char* str, int strLength )
+{
+    //static int strIndex = 0;
+
+
+    while ( uartUsb.readable() && (indice < strLength) ) {
+            uartUsb.read( &str[indice] , 1 );
+            uartUsb.write( &str[indice] ,1 );
+            indice++;
+    }
+/*     int auxindex  = strIndex;
+    if (strIndex == strLength){
+        str[strLength]='\0';
+        strIndex = 0;
+    } */
+
+    return indice;
 }
 
 static void pcSerialComGetCodeUpdate( char receivedChar )
@@ -287,13 +314,6 @@ static void commandShowCurrentTemperatureInFahrenheit()
 
 static void commandSetDateAndTime()
 {
-    char year[5] = "";
-    char month[3] = "";
-    char day[3] = "";
-    char hour[3] = "";
-    char minute[3] = "";
-    char second[3] = "";
-    
 // maquina de estados para
     static int date_state = initState;
     switch(date_state){
@@ -303,6 +323,7 @@ static void commandSetDateAndTime()
         break;
         case yearState:
             if (pcSerialComStringRead( year, 4) == 4){
+                indice = 0;
                 date_state = monthState;
                 pcSerialComStringWrite("\r\n");
             pcSerialComStringWrite("Type two digits for the current month (01-12): ");
@@ -311,6 +332,7 @@ static void commandSetDateAndTime()
         
         case monthState:
             if (pcSerialComStringRead( month, 2) == 2){
+                indice = 0;
                 date_state = dayState;
                 pcSerialComStringWrite("\r\n");
                 pcSerialComStringWrite("Type two digits for the current day (01-31): ");
@@ -318,6 +340,7 @@ static void commandSetDateAndTime()
         break;
         case dayState:
             if ( pcSerialComStringRead( day, 2) == 2){
+                indice = 0;
                 date_state = hourState;
                 pcSerialComStringWrite("\r\n");
                 pcSerialComStringWrite("Type two digits for the current hour (00-23): ");
@@ -325,6 +348,7 @@ static void commandSetDateAndTime()
         break;
         case hourState:
             if ( pcSerialComStringRead( hour, 2) == 2){
+                indice = 0;
                 date_state = minuteState;
                 pcSerialComStringWrite("\r\n");
                 pcSerialComStringWrite("Type two digits for the current minutes (00-59): ");
@@ -332,6 +356,7 @@ static void commandSetDateAndTime()
         break;
         case minuteState:
             if ( pcSerialComStringRead( minute, 2) == 2){
+                indice = 0;
                 date_state = secondState;
                 pcSerialComStringWrite("\r\n");
                 pcSerialComStringWrite("Type two digits for the current seconds (00-59): ");
@@ -339,15 +364,20 @@ static void commandSetDateAndTime()
         break;
         case secondState:
             if ( pcSerialComStringRead( second, 2) == 2){
+                indice = 0;
                 date_state = initState;
                 pcSerialComStringWrite("\r\n");
-                pcSerialComStringWrite("Date and time has been set\r\n");   
+                pcSerialComStringWrite("Date and time has been set\r\n"); 
+                pcSerialComStringWrite(second); 
+                 
 
                 dateAndTimeWrite( atoi(year), atoi(month), atoi(day), 
                     atoi(hour), atoi(minute), atoi(second) );
+                    indice = 0;
                     dateComplete = true;
                 }
         break;}
+
 }
 
 static void commandShowDateAndTime()
