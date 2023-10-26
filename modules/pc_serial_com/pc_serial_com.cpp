@@ -40,6 +40,12 @@ static bool codeComplete = false;
 static bool dateComplete = true;
 static int numberOfCodeChars = 0;
 
+/* 
+Las difini como variables globales porque en la funcion se me perdia la referencia de los
+punteros y por lo tanto no me guardaba nada, ahora ya funciona correctamente y la hora queda
+seteada en el microcrontrolador
+ */
+ 
 static char year[5] = "";
 static char month[3] = "";
 static char day[3] = "";
